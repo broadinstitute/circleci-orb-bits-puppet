@@ -1,0 +1,37 @@
+---
+version: 2.1
+
+orbs:
+  orb-tools: circleci/orb-tools@8.27.2
+
+workflows:
+  version: 2.1
+  validate_deploy:
+    jobs:
+      - orb-tools/lint:
+          name: 'orb-lint'
+          use-default-rules: false
+      - orb-tools/publish-dev:
+          attach-workspace: false
+          checkout: true
+          name: 'publish-dev-orb'
+          orb-name: broadinstitute/bits-puppet
+          orb-path: './orb.yml'
+          publish-alpha-version: false
+          publish-sha-version: false
+          publish-branch-sha-version: true
+          requires:
+            - orb-lint
+          store-artifact: false
+          validate: true
+      - orb-tools/publish:
+          checkout: true
+          name: 'Publish orb'
+          orb-path: './orb.yml'
+          orb-ref: broadinstitute/bits-puppet@${CIRCLE_TAG}
+          validate: true
+          filters:
+            tags:
+              only: /[0-9]+(\.[0-9]+)*/
+            branches:
+              ignore: /.*/

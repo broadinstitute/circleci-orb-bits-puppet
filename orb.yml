@@ -1,0 +1,130 @@
+---
+version: 2.1
+description: |
+  A collection of useful Puppet commands, executors and jobs for doing CI/CD.
+
+  See https://github.com/broadinstitute/circleci-orb-bits-puppet
+
+commands:
+  prereq:
+    description: 'Install and cache all dependencies including any unit test fixtures'
+    steps:
+      - restore_cache:
+          key: v1-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Gemfile" }}-{{ .Environment.CIRCLE_JOB }}
+      - run:
+          name: 'Install Puppet dependencies'
+          command: |
+            gem update bundler --no-doc
+            rm -f Gemfile.lock
+            bundle install --with development --without system_tests --path=${BUNDLE_PATH:-vendor/bundle}
+      - run:
+          name: 'Install fixtures'
+          command: bundle exec rake spec_prep
+      - save_cache:
+          key: v1-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Gemfile" }}-{{ .Environment.CIRCLE_JOB }}
+          paths:
+            - '/usr/local/bundle/ruby'
+  publish:
+    description: 'Publish the module to the Forge'
+    steps:
+      - run:
+          name: 'Build module'
+          command: 'bundle exec rake build'
+      - run:
+          name: 'Publishing module to PuppetForge'
+          command: 'bundle exec rake module:push'
+          environment:
+            BLACKSMITH_FORGE_URL: 'https://forgeapi.puppet.com'
+  static:
+    description: 'Run all static analysis'
+    steps:
+      - run:
+          name: 'Symlink check'
+          command: 'bundle exec rake check:symlinks'
+      - run:
+          name: '.gitignore check'
+          command: 'bundle exec rake check:git_ignore'
+      - run:
+          name: 'dot_underscore check'
+          command: 'bundle exec rake check:dot_underscore'
+      - run:
+          name: 'test file check'
+          command: 'bundle exec rake check:test_file'
+      - run:
+          name: 'RuboCop check'
+          command: 'bundle exec rake rubocop'
+      - run:
+          name: 'Syntax check'
+          command: 'bundle exec rake syntax'
+      - run:
+          name: 'Lint check'
+          command: 'bundle exec rake lint'
+      - run:
+          name: 'Metadata lint check'
+          command: 'bundle exec rake metadata_lint'
+  unit-tests:
+    description: 'Run Puppet unit tests'
+    steps:
+      - run:
+          name: 'Run unit tests'
+          command: 'bundle exec rake spec'
+  verify-tag:
+    description: 'Verify the internal version vs. the git tag'
+    steps:
+      - run:
+          name: 'Verify git tag vs. metadata version'
+          command: |
+            bash -c 'CIRCLE_TAG=${CIRCLE_TAG:-XXX} && [ $CIRCLE_TAG == $( cat metadata.json | jq -r '.version' ) ]'
+executors:
+  ruby_puppet:
+    parameters:
+      ruby_version:
+        type: 'string'
+        default: '2.4.6'
+      puppet_version:
+        type: 'string'
+        default: '< 6.0.0'
+    docker:
+      - image: circleci/ruby:<< parameters.ruby_version >>
+    environment:
+      PUPPET_GEM_VERSION: << parameters.puppet_version >>
+    working_directory: '/tmp/build'
+jobs:
+  deploy:
+    description: 'Deploy to Puppet Forge'
+    executor:
+      name: ruby_puppet
+      ruby_version: '2.4.6'
+      puppet_version: '< 6.0.0'
+    steps:
+      - 'checkout'
+      - 'prereq'
+      - 'verify-tag'
+      - 'publish'
+  run-tests:
+    description: 'Run all tests'
+    parameters:
+      ruby_version:
+        type: 'string'
+        default: '2.4.6'
+      puppet_version:
+        type: 'string'
+        default: '< 6.0.0'
+    executor:
+      name: ruby_puppet
+      ruby_version: << parameters.ruby_version >>
+      puppet_version: << parameters.puppet_version >>
+    steps:
+      - 'checkout'
+      - 'prereq'
+      - 'unit-tests'
+  static:
+    description: 'Run all static analysis'
+    executor:
+      name: ruby_puppet
+      ruby_version: '2.4.6'
+      puppet_version: '< 6.0.0'
+    steps:
+      - 'checkout'
+      - 'prereq'
+      - 'static'
