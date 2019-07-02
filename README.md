@@ -32,12 +32,12 @@ An orb containing useful [Puppet][1] commands and jobs for doing CI/CD in [Circl
 
 ## pre-commit hooks
 
-A configuration is provided for doing pre-commit hook checks using [pre-commit][7].  For all the checks to work you will need to have the following installed already:
+A configuration is provided for doing pre-commit hook checks using [pre-commit][3].  For all the checks to work you will need to have the following installed already:
 
 * [https://github.com/adrienverge/yamllint](yamllint)
 * [CircleCI][2] command-line utility: [https://circleci.com/docs/2.0/local-cli/](circleci)
 
 [1]: https://puppet.com/ "Puppet"
 [2]: https://circleci.com/ "CircleCI"
-[7]: https://pre-commit.com/ "pre-commit"
+[3]: https://pre-commit.com/ "pre-commit"
 [4]: https://forge.puppet.com/ "PuppetForge"
