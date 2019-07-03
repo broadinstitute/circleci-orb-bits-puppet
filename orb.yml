@@ -8,9 +8,14 @@ description: |
 commands:
   prereq:
     description: 'Install and cache all dependencies including any unit test fixtures'
+    parameters:
+      cache_version:
+        description: 'A cache version that may be used for cache busting'
+        type: string
+        default: 'v1'
     steps:
       - restore_cache:
-          key: v1-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Gemfile" }}-{{ .Environment.CIRCLE_JOB }}
+          key: <<parameters.cache_version>>-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Gemfile" }}-{{ .Environment.CIRCLE_JOB }}
       - run:
           name: 'Install Puppet dependencies'
           command: |
@@ -21,7 +26,7 @@ commands:
           name: 'Install fixtures'
           command: bundle exec rake spec_prep
       - save_cache:
-          key: v1-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Gemfile" }}-{{ .Environment.CIRCLE_JOB }}
+          key: <<parameters.cache_version>>-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Gemfile" }}-{{ .Environment.CIRCLE_JOB }}
           paths:
             - '/usr/local/bundle/ruby'
   publish:
@@ -78,24 +83,33 @@ commands:
 executors:
   ruby_puppet:
     parameters:
-      ruby_version:
-        type: 'string'
-        default: '2.4.6'
       puppet_version:
         type: 'string'
         default: '< 6.0.0'
+      resource_class:
+        type: 'string'
+        default: 'small'
+      ruby_version:
+        type: 'string'
+        default: '2.4.6'
     docker:
       - image: circleci/ruby:<< parameters.ruby_version >>
     environment:
       PUPPET_GEM_VERSION: << parameters.puppet_version >>
+    resource_class: << parameters.resource_class >>
     working_directory: '/tmp/build'
 jobs:
   deploy:
     description: 'Deploy to Puppet Forge'
+    parameters:
+      resource_class:
+        type: 'string'
+        default: 'small'
     executor:
-      name: ruby_puppet
-      ruby_version: '2.4.6'
+      name: 'ruby_puppet'
       puppet_version: '< 6.0.0'
+      resource_class: << parameters.resource_class >>
+      ruby_version: '2.4.6'
     steps:
       - 'checkout'
       - 'prereq'
@@ -104,26 +118,35 @@ jobs:
   run-tests:
     description: 'Run all tests'
     parameters:
-      ruby_version:
-        type: 'string'
-        default: '2.4.6'
       puppet_version:
         type: 'string'
         default: '< 6.0.0'
+      resource_class:
+        type: 'string'
+        default: 'small'
+      ruby_version:
+        type: 'string'
+        default: '2.4.6'
     executor:
-      name: ruby_puppet
-      ruby_version: << parameters.ruby_version >>
+      name: 'ruby_puppet'
       puppet_version: << parameters.puppet_version >>
+      resource_class: << parameters.resource_class >>
+      ruby_version: << parameters.ruby_version >>
     steps:
       - 'checkout'
       - 'prereq'
       - 'unit-tests'
   static:
     description: 'Run all static analysis'
+    parameters:
+      resource_class:
+        type: 'string'
+        default: 'small'
     executor:
-      name: ruby_puppet
-      ruby_version: '2.4.6'
+      name: 'ruby_puppet'
       puppet_version: '< 6.0.0'
+      resource_class: << parameters.resource_class >>
+      ruby_version: '2.4.6'
     steps:
       - 'checkout'
       - 'prereq'
