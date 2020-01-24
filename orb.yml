@@ -13,22 +13,37 @@ commands:
         description: 'A cache version that may be used for cache busting'
         type: string
         default: 'v1'
+  prereq-pdk:
+    description: 'Install and cache all dependencies including any unit test fixtures (pdk)'
+    parameters:
+      cache_version:
+        description: 'A cache version that may be used for cache busting'
+        type: string
+        default: 'v1'
     steps:
       - restore_cache:
-          key: <<parameters.cache_version>>-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Gemfile" }}-{{ .Environment.CIRCLE_JOB }}
+          key: <<parameters.cache_version>>-pdk-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Gemfile" }}-{{ .Environment.CIRCLE_JOB }}
+      - run:
+          name: 'Install PDK'
+          command: |
+            mkdir -p ~/.config/puppet
+            cp .circleci/analytics.yml ~/.config/puppet/analytics.yml
+            curl -o /tmp/puppet.deb https://apt.puppet.com/puppet-tools-release-stretch.deb
+            sudo dpkg -i /tmp/puppet.deb
+            sudo apt-get update
+            sudo apt-get install pdk
       - run:
           name: 'Install Puppet dependencies'
           command: |
-            gem update bundler --no-doc
             rm -f Gemfile.lock
-            bundle install --with development --without system_tests --path=${BUNDLE_PATH:-vendor/bundle}
+            pdk bundle
       - run:
           name: 'Install fixtures'
           command: bundle exec rake spec_prep
       - save_cache:
-          key: <<parameters.cache_version>>-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Gemfile" }}-{{ .Environment.CIRCLE_JOB }}
+          key: <<parameters.cache_version>>-pdk-{{ .Environment.CIRCLE_PROJECT_REPONAME }}-{{ checksum "Gemfile" }}-{{ .Environment.CIRCLE_JOB }}
           paths:
-            - '/usr/local/bundle/ruby'
+            - '/opt/puppetlabs/pdk/share/cache/ruby'
   publish:
     description: 'Publish the module to the Forge'
     steps:
@@ -38,6 +53,17 @@ commands:
       - run:
           name: 'Publishing module to PuppetForge'
           command: 'bundle exec rake module:push'
+          environment:
+            BLACKSMITH_FORGE_URL: 'https://forgeapi.puppet.com'
+  publish-pdk:
+    description: 'Publish the module to the Forge (pdk)'
+    steps:
+      - run:
+          name: 'Build module'
+          command: 'pdk build'
+      - run:
+          name: 'Publishing module to PuppetForge'
+          command: 'pdk release publish'
           environment:
             BLACKSMITH_FORGE_URL: 'https://forgeapi.puppet.com'
   static:
@@ -67,12 +93,24 @@ commands:
       - run:
           name: 'Metadata lint check'
           command: 'bundle exec rake metadata_lint'
+  static-pdk:
+    description: 'Run all static analysis (pdk)'
+    steps:
+      - run:
+          name: 'PDK Validator'
+          command: 'pdk validate --parallel'
   unit-tests:
     description: 'Run Puppet unit tests'
     steps:
       - run:
           name: 'Run unit tests'
           command: 'bundle exec rake spec'
+  unit-tests-pdk:
+    description: 'Run Puppet unit tests (pdk)'
+    steps:
+      - run:
+          name: 'Run unit tests'
+          command: 'pdk test unit --parallel --verbose'
   verify-tag:
     description: 'Verify the internal version vs. the git tag'
     steps:
@@ -105,6 +143,9 @@ jobs:
       resource_class:
         type: 'string'
         default: 'small'
+      use_pdk:
+        default: false
+        type: boolean
     executor:
       name: 'ruby_puppet'
       puppet_version: '< 6.0.0'
@@ -112,9 +153,23 @@ jobs:
       ruby_version: '2.4.6'
     steps:
       - 'checkout'
-      - 'prereq'
+      - when:
+        condition: << parameters.use_pdk >>
+        steps:
+          - prereq-pdk
+      - unless:
+        condition: << parameters.use_pdk >>
+        steps:
+          - prereq
       - 'verify-tag'
-      - 'publish'
+      - when:
+        condition: << parameters.use_pdk >>
+        steps:
+          - publish-pdk
+      - unless:
+        condition: << parameters.use_pdk >>
+        steps:
+          - publish
   run-tests:
     description: 'Run all tests'
     parameters:
@@ -127,6 +182,9 @@ jobs:
       ruby_version:
         type: 'string'
         default: '2.4.6'
+      use_pdk:
+        default: false
+        type: boolean
     executor:
       name: 'ruby_puppet'
       puppet_version: << parameters.puppet_version >>
@@ -134,14 +192,31 @@ jobs:
       ruby_version: << parameters.ruby_version >>
     steps:
       - 'checkout'
-      - 'prereq'
-      - 'unit-tests'
+      - when:
+        condition: << parameters.use_pdk >>
+        steps:
+          - prereq-pdk
+      - unless:
+        condition: << parameters.use_pdk >>
+        steps:
+          - prereq
+      - when:
+        condition: << parameters.use_pdk >>
+        steps:
+          - unit-tests-pdk
+      - unless:
+        condition: << parameters.use_pdk >>
+        steps:
+          - unit-tests
   static:
     description: 'Run all static analysis'
     parameters:
       resource_class:
         type: 'string'
         default: 'small'
+      use_pdk:
+        default: false
+        type: boolean
     executor:
       name: 'ruby_puppet'
       puppet_version: '< 6.0.0'
@@ -149,5 +224,19 @@ jobs:
       ruby_version: '2.4.6'
     steps:
       - 'checkout'
-      - 'prereq'
-      - 'static'
+      - when:
+        condition: << parameters.use_pdk >>
+        steps:
+          - prereq-pdk
+      - unless:
+        condition: << parameters.use_pdk >>
+        steps:
+          - prereq
+      - when:
+        condition: << parameters.use_pdk >>
+        steps:
+          - static-pdk
+      - unless:
+        condition: << parameters.use_pdk >>
+        steps:
+          - static
